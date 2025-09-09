@@ -47,26 +47,25 @@ jobs:
         run: terraform apply -auto-approve -var="project_id=${{ secrets.GCP_PROJECT_ID }}"
         working-directory: ${{ env.WORKING_DIR }}
 
-      - name: Verificar estrutura de arquivos
+      - name: Obter nome do bucket e copiar arquivo
         run: |
-          echo "📁 Diretório atual: $(pwd)"
-          echo "📁 Conteúdo do diretório:"
-          ls -la
-          echo "📁 Conteúdo da pasta calculadora:"
-          ls -la ../calculadora/
-          echo "📄 Caminho absoluto do index.html: $GITHUB_WORKSPACE/calculadora/index.html"
-        working-directory: ${{ env.WORKING_DIR }}
-
-      - name: Copiar arquivo para o bucket
-        run: |
-          # Obter nome do bucket
-          BUCKET_NAME=$(terraform output -raw html_bucket_name 2>/dev/null | head -n 1 | tr -d '\n')
+          # Mudar para o diretório raiz primeiro
+          cd $GITHUB_WORKSPACE
+          
+          # Obter nome do bucket do Terraform
+          BUCKET_NAME=$(cd infra && terraform output -raw html_bucket_name)
           echo "📤 Copiando para o bucket: $BUCKET_NAME"
           
-          # Usar caminho absoluto para garantir que encontra o arquivo
-          gsutil cp "$GITHUB_WORKSPACE/calculadora/index.html" "gs://$BUCKET_NAME/index.html"
+          # Verificar se o arquivo existe
+          if [ ! -f "calculadora/index.html" ]; then
+            echo "❌ Erro: Arquivo index.html não encontrado em calculadora/"
+            ls -la calculadora/
+            exit 1
+          fi
           
-          # Configurar permissões
-          gsutil acl ch -u AllUsers:R "gs://$BUCKET_NAME/index.html"
+          # Copiar arquivo para o bucket
+          gsutil cp calculadora/index.html gs://$BUCKET_NAME/index.html
+          
+          # Configurar permissões públicas
+          gsutil acl ch -u AllUsers:R gs://$BUCKET_NAME/index.html
           echo "✅ Arquivo copiado para: gs://$BUCKET_NAME/index.html"
-        working-directory: ${{ env.WORKING_DIR }}
