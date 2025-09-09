@@ -3,7 +3,7 @@ provider "google" {
   region  = var.region
 }
 
-resource "google_storage_bucket" "html_bucket" {
+resource "google_storage_bucket" "html_bucket2" {
   name          = var.html_bucket_name
   location      = var.region
   project       = var.project_id
