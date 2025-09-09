@@ -47,41 +47,41 @@ jobs:
         run: terraform apply -auto-approve -var="project_id=${{ secrets.GCP_PROJECT_ID }}"
         working-directory: ${{ env.WORKING_DIR }}
 
-      - name: Salvar nome do bucket em arquivo
-        run: terraform output -raw html_bucket_name > bucket_name.txt
-        working-directory: ${{ env.WORKING_DIR }}
-
-      - name: Ler nome do bucket
-        id: bucket-name
+      - name: Obter nome do bucket
+        id: get-bucket
         run: |
-          BUCKET_NAME=$(cat bucket_name.txt | tr -d '\n' | tr -d '\r')
-          echo "BUCKET_NAME=${BUCKET_NAME}" >> $GITHUB_ENV
-          echo "✅ Nome do bucket: ${BUCKET_NAME}"
+          cd ${{ env.WORKING_DIR }}
+          BUCKET_NAME=$(terraform output -raw html_bucket_name | tr -d '\n' | tr -d '\r')
+          echo "bucket_name=$BUCKET_NAME" >> $GITHUB_OUTPUT
+          echo "✅ Nome do bucket: $BUCKET_NAME"
 
-      - name: Verificar se arquivo existe
+      - name: Verificar estrutura de arquivos
         run: |
-          echo "📁 Estrutura de diretórios:"
-          pwd
-          ls -la
-          echo "📁 Conteúdo da pasta calculadora:"
-          ls -la ../calculadora/
-          if [ -f "../calculadora/index.html" ]; then
+          echo "📁 Diretório raiz: $GITHUB_WORKSPACE"
+          echo "📁 Conteúdo:"
+          ls -la $GITHUB_WORKSPACE/
+          echo "📁 Pasta calculadora:"
+          ls -la $GITHUB_WORKSPACE/calculadora/
+          
+          if [ -f "$GITHUB_WORKSPACE/calculadora/index.html" ]; then
             echo "✅ Arquivo index.html encontrado"
           else
-            echo "❌ Arquivo index.html NÃO encontrado"
+            echo "❌ ERRO: index.html não encontrado em $GITHUB_WORKSPACE/calculadora/"
             exit 1
           fi
 
       - name: Copiar arquivo para o bucket
         run: |
-          echo "📤 Copiando para o bucket: $BUCKET_NAME"
-          gsutil cp ../calculadora/index.html gs://$BUCKET_NAME/index.html
-          echo "✅ Arquivo copiado"
+          gsutil cp $GITHUB_WORKSPACE/calculadora/index.html gs://${{ steps.get-bucket.outputs.bucket_name }}/index.html
+          echo "✅ Arquivo copiado para o bucket"
 
       - name: Configurar permissões públicas
         run: |
-          gsutil acl ch -u AllUsers:R gs://$BUCKET_NAME/index.html
-          echo "✅ Permissões configuradas"
+          gsutil acl ch -u AllUsers:R gs://${{ steps.get-bucket.outputs.bucket_name }}/index.html
+          echo "✅ Permissões públicas configuradas"
 
-      - name: Confirmar sucesso
-        run: echo "✅ Deploy completo! URL: https://storage.googleapis.com/$BUCKET_NAME/index.html"
+      - name: Finalizar deploy
+        run: |
+          echo "🚀 Deploy concluído com sucesso!"
+          echo "📋 URL do arquivo: https://storage.googleapis.com/${{ steps.get-bucket.outputs.bucket_name }}/index.html"
+          echo "🌐 URL do website: https://${{ steps.get-bucket.outputs.bucket_name }}.storage.googleapis.com"
