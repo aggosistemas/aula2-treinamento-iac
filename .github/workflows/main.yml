@@ -54,7 +54,14 @@ jobs:
 
       - name: Obter nome do bucket
         id: terraform-output
-        run: echo "bucket_name=$(terraform output -raw html_bucket_name)" >> $GITHUB_OUTPUT
+        run: |
+          BUCKET_NAME=$(terraform output -raw html_bucket_name 2>/dev/null || echo "")
+          if [ -z "$BUCKET_NAME" ]; then
+            echo "Erro: Não foi possível obter o nome do bucket"
+            exit 1
+          fi
+          echo "bucket_name=$BUCKET_NAME" >> $GITHUB_OUTPUT
+          echo "Bucket criado: $BUCKET_NAME"
         working-directory: ${{ env.WORKING_DIR }}
 
   deploy-content:
@@ -75,10 +82,20 @@ jobs:
       - name: Setup Google Cloud SDK
         uses: google-github-actions/setup-gcloud@v1
 
+      - name: Verificar se arquivo existe
+        run: |
+          if [ ! -f "../calculadora/index.html" ]; then
+            echo "❌ Arquivo index.html não encontrado!"
+            ls -la ../calculadora/
+            exit 1
+          fi
+          echo "✅ Arquivo index.html encontrado"
+
       - name: Copiar arquivos para o bucket
         run: |
           gsutil cp ../calculadora/index.html gs://${{ needs.setup.outputs.bucket_name }}/index.html
           gsutil acl ch -u AllUsers:R gs://${{ needs.setup.outputs.bucket_name }}/index.html
+          echo "✅ Arquivo copiado com sucesso para o bucket: ${{ needs.setup.outputs.bucket_name }}"
 
   notify:
     runs-on: ubuntu-latest
