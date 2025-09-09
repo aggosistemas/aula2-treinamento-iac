@@ -18,7 +18,7 @@ resource "google_storage_bucket" "html_bucket2" {
 }
 
 resource "google_storage_bucket_iam_member" "public_read_html" {
-  bucket = google_storage_bucket.html_bucket.name
+  bucket = google_storage_bucket.html_bucket2.name
   role   = "roles/storage.objectViewer"
   member = "allUsers"
 }
