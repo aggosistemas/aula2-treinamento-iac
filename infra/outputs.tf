@@ -1,3 +1,9 @@
+output "html_bucket_name" {
+  description = "Nome do bucket HTML criado"
+  value       = google_storage_bucket.html_bucket2.name
+}
+
 output "html_bucket_url" {
-  value = "https://storage.googleapis.com/${google_storage_bucket.html_bucket2.name}/index.html"
+  description = "URL pública para acessar o arquivo index.html"
+  value       = "https://storage.googleapis.com/${google_storage_bucket.html_bucket2.name}/index.html"
 }
