@@ -47,36 +47,45 @@ jobs:
         run: terraform apply -auto-approve -var="project_id=${{ secrets.GCP_PROJECT_ID }}"
         working-directory: ${{ env.WORKING_DIR }}
 
-      - name: Obter nome do bucket via arquivo
-        id: bucket-name
+      - name: Extrair nome do bucket manualmente
+        id: extract-bucket
         run: |
           cd ${{ env.WORKING_DIR }}
-          # Salvar output em arquivo e limpar
-          terraform output -raw html_bucket_name > bucket_name.txt
-          BUCKET_NAME=$(cat bucket_name.txt | grep -v "::debug::" | head -n 1 | tr -d '\n' | tr -d '\r')
+          # Criar arquivo com output completo
+          terraform output -json > tf_output.json
+          
+          # Extrair nome do bucket manualmente do JSON
+          BUCKET_NAME=$(cat tf_output.json | grep -o '"html_bucket_name":[[:space:]]*{[^}]*"value":[[:space:]]*"[^"]*"' | grep -o '"[^"]*"$' | tr -d '"')
+          
+          # Se não funcionar, tentar método alternativo
+          if [ -z "$BUCKET_NAME" ]; then
+            BUCKET_NAME=$(cat tf_output.json | grep -A5 '"html_bucket_name":' | grep '"value":' | cut -d'"' -f4)
+          fi
+          
           echo "bucket_name=$BUCKET_NAME" >> $GITHUB_OUTPUT
-          echo "✅ Nome limpo do bucket: '$BUCKET_NAME'"
+          echo "✅ Nome extraído: $BUCKET_NAME"
 
-      - name: Verificar arquivo index.html
+      - name: Verificar nome do bucket
         run: |
-          if [ ! -f "$GITHUB_WORKSPACE/calculadora/index.html" ]; then
-            echo "❌ ERRO: index.html não encontrado em $GITHUB_WORKSPACE/calculadora/"
-            ls -la "$GITHUB_WORKSPACE/calculadora/"
+          if [ -z "${{ steps.extract-bucket.outputs.bucket_name }}" ]; then
+            echo "❌ ERRO: Não foi possível extrair o nome do bucket"
+            echo "Conteúdo do output:"
+            cat ${{ env.WORKING_DIR }}/tf_output.json
             exit 1
           fi
-          echo "✅ Arquivo index.html encontrado"
+          echo "✅ Nome do bucket válido: ${{ steps.extract-bucket.outputs.bucket_name }}"
 
       - name: Copiar arquivo para o bucket
         run: |
-          echo "📤 Copiando para: gs://${{ steps.bucket-name.outputs.bucket_name }}/index.html"
-          gsutil cp "$GITHUB_WORKSPACE/calculadora/index.html" "gs://${{ steps.bucket-name.outputs.bucket_name }}/index.html"
+          gsutil cp "$GITHUB_WORKSPACE/calculadora/index.html" "gs://${{ steps.extract-bucket.outputs.bucket_name }}/index.html"
+          echo "✅ Arquivo copiado com sucesso"
 
       - name: Configurar permissões públicas
         run: |
-          gsutil acl ch -u AllUsers:R "gs://${{ steps.bucket-name.outputs.bucket_name }}/index.html"
+          gsutil acl ch -u AllUsers:R "gs://${{ steps.extract-bucket.outputs.bucket_name }}/index.html"
           echo "✅ Permissões configuradas"
 
       - name: Finalizar deploy
         run: |
-          echo "🚀 Deploy concluído com sucesso!"
-          echo "📋 URL: https://storage.googleapis.com/${{ steps.bucket-name.outputs.bucket_name }}/index.html"
+          echo "🚀 Deploy concluído!"
+          echo "📋 URL: https://storage.googleapis.com/${{ steps.extract-bucket.outputs.bucket_name }}/index.html"
