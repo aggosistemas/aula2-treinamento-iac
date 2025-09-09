@@ -26,13 +26,13 @@ jobs:
         with:
           terraform_version: ${{ env.TERRAFORM_VERSION }}
 
-      - name: Configurar autenticação GCP
+      - name: Autenticar na GCP
         uses: google-github-actions/auth@v1
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
           project_id: ${{ secrets.GCP_PROJECT_ID }}
 
-      - name: Setup Google Cloud SDK
+      - name: Instalar SDK da Google Cloud
         uses: google-github-actions/setup-gcloud@v1
         with:
           project_id: ${{ secrets.GCP_PROJECT_ID }}
@@ -53,21 +53,21 @@ jobs:
         id: get-bucket-name
         run: |
           BUCKET_NAME=$(terraform output -raw html_bucket_name)
-          echo "✅ Bucket criado: $BUCKET_NAME"
+          echo "bucket_name=$BUCKET_NAME" >> $GITHUB_OUTPUT
         working-directory: ${{ env.WORKING_DIR }}
 
-      - name: Verificar se arquivo existe
+      - name: Verificar se arquivo index.html existe
         run: |
-          if [ ! -f "../calculadora/index.html" ]; then
+          if [ ! -f "calculadora/index.html" ]; then
             echo "❌ Arquivo index.html não encontrado!"
             exit 1
           fi
           echo "✅ Arquivo index.html encontrado"
 
-      - name: Copiar arquivo para o bucket
+      - name: Copiar arquivo index.html para o bucket
         run: |
-          BUCKET_NAME=$(terraform output -raw html_bucket_name)
-          gsutil cp ../calculadora/index.html gs://$BUCKET_NAME/index.html
+          BUCKET_NAME=${{ steps.get-bucket-name.outputs.bucket_name }}
+          gsutil cp calculadora/index.html gs://$BUCKET_NAME/index.html
           gsutil acl ch -u AllUsers:R gs://$BUCKET_NAME/index.html
-          echo "✅ Arquivo copiado com sucesso para o bucket: $BUCKET_NAME"
+          echo "✅ index.html copiado com sucesso para o bucket: $BUCKET_NAME"
         working-directory: ${{ env.WORKING_DIR }}
