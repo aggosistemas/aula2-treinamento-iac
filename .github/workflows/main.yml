@@ -7,6 +7,14 @@ on:
         description: "Selecione a branch para executar"
         required: true
         default: "main"
+      action:
+        description: "Selecione a ação"
+        required: true
+        default: "apply"
+        type: choice
+        options:
+          - apply
+          - destroy
 
 env:
   TERRAFORM_VERSION: 1.7.5
@@ -18,6 +26,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       bucket_name: ${{ steps.terraform-output.outputs.bucket_name }}
+      terraform_action: ${{ github.event.inputs.action }}
     steps:
       - name: Checkout código
         uses: actions/checkout@v3
@@ -48,25 +57,39 @@ jobs:
         run: terraform validate
         working-directory: ${{ env.WORKING_DIR }}
 
-      - name: Aplicar infraestrutura Terraform
-        run: terraform apply -auto-approve
+      - name: Aplicar ou destruir infraestrutura
+        run: |
+          if [ "${{ github.event.inputs.action }}" = "apply" ]; then
+            echo "🚀 Executando terraform apply..."
+            terraform apply -auto-approve
+          else
+            echo "🗑️ Executando terraform destroy..."
+            terraform destroy -auto-approve
+          fi
         working-directory: ${{ env.WORKING_DIR }}
 
-      - name: Obter nome do bucket
+      - name: Obter nome do bucket (apenas para apply)
+        if: github.event.inputs.action == 'apply'
         id: terraform-output
         run: |
           BUCKET_NAME=$(terraform output -raw html_bucket_name 2>/dev/null || echo "")
           if [ -z "$BUCKET_NAME" ]; then
-            echo "Erro: Não foi possível obter o nome do bucket"
+            echo "❌ Erro: Não foi possível obter o nome do bucket"
             exit 1
           fi
           echo "bucket_name=$BUCKET_NAME" >> $GITHUB_OUTPUT
-          echo "Bucket criado: $BUCKET_NAME"
+          echo "✅ Bucket criado: $BUCKET_NAME"
+        working-directory: ${{ env.WORKING_DIR }}
+
+      - name: Mensagem de destruição completa
+        if: github.event.inputs.action == 'destroy'
+        run: echo "✅ Infraestrutura destruída com sucesso"
         working-directory: ${{ env.WORKING_DIR }}
 
   deploy-content:
     runs-on: ubuntu-latest
     needs: setup
+    if: needs.setup.outputs.terraform_action == 'apply'
     steps:
       - name: Checkout código
         uses: actions/checkout@v3
@@ -93,25 +116,52 @@ jobs:
 
       - name: Copiar arquivos para o bucket
         run: |
+          echo "📤 Copiando arquivo para o bucket: ${{ needs.setup.outputs.bucket_name }}"
           gsutil cp ../calculadora/index.html gs://${{ needs.setup.outputs.bucket_name }}/index.html
           gsutil acl ch -u AllUsers:R gs://${{ needs.setup.outputs.bucket_name }}/index.html
-          echo "✅ Arquivo copiado com sucesso para o bucket: ${{ needs.setup.outputs.bucket_name }}"
+          echo "✅ Arquivo copiado com sucesso!"
 
   notify:
     runs-on: ubuntu-latest
-    needs: [setup, deploy-content]
+    needs: 
+      - setup
+      - deploy-content
     if: always()
+    outputs:
+      action_type: ${{ needs.setup.outputs.terraform_action }}
+      bucket_name: ${{ needs.setup.outputs.bucket_name }}
     steps:
-      - name: Notificar sucesso no Discord
-        if: success()
+      - name: Notificar sucesso no Discord (apply)
+        if: success() && needs.setup.outputs.terraform_action == 'apply'
         run: |
           curl -X POST -H "Content-Type: application/json" \
           -d '{"content": "✅ Deploy do bucket HTML realizado com sucesso! Bucket: ${{ needs.setup.outputs.bucket_name }}"}' \
           ${{ secrets.DISCORD_WEBHOOK_URL }}
 
-      - name: Notificar falha no Discord
-        if: failure()
+      - name: Notificar sucesso no Discord (destroy)
+        if: success() && needs.setup.outputs.terraform_action == 'destroy'
+        run: |
+          curl -X POST -H "Content-Type: application/json" \
+          -d '{"content": "✅ Destruição da infraestrutura realizada com sucesso! Bucket removido."}' \
+          ${{ secrets.DISCORD_WEBHOOK_URL }}
+
+      - name: Notificar falha no Discord (apply)
+        if: failure() && needs.setup.outputs.terraform_action == 'apply'
         run: |
           curl -X POST -H "Content-Type: application/json" \
           -d '{"content": "❌ Falha no deploy do bucket HTML. Verifique a pipeline no GitHub Actions."}' \
+          ${{ secrets.DISCORD_WEBHOOK_URL }}
+
+      - name: Notificar falha no Discord (destroy)
+        if: failure() && needs.setup.outputs.terraform_action == 'destroy'
+        run: |
+          curl -X POST -H "Content-Type: application/json" \
+          -d '{"content": "❌ Falha na destruição da infraestrutura. Verifique a pipeline no GitHub Actions."}' \
+          ${{ secrets.DISCORD_WEBHOOK_URL }}
+
+      - name: Notificar falha no deploy de conteúdo
+        if: failure() && needs.deploy-content.result == 'failure'
+        run: |
+          curl -X POST -H "Content-Type: application/json" \
+          -d '{"content": "❌ Falha no upload do conteúdo para o bucket. Verifique se o arquivo index.html existe."}' \
           ${{ secrets.DISCORD_WEBHOOK_URL }}
