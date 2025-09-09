@@ -47,45 +47,23 @@ jobs:
         run: terraform apply -auto-approve -var="project_id=${{ secrets.GCP_PROJECT_ID }}"
         working-directory: ${{ env.WORKING_DIR }}
 
-      - name: Extrair nome do bucket manualmente
+      - name: Extrair nome do bucket
         id: extract-bucket
         run: |
           cd ${{ env.WORKING_DIR }}
-          # Criar arquivo com output completo
-          terraform output -json > tf_output.json
-          
-          # Extrair nome do bucket manualmente do JSON
-          BUCKET_NAME=$(cat tf_output.json | grep -o '"html_bucket_name":[[:space:]]*{[^}]*"value":[[:space:]]*"[^"]*"' | grep -o '"[^"]*"$' | tr -d '"')
-          
-          # Se não funcionar, tentar método alternativo
-          if [ -z "$BUCKET_NAME" ]; then
-            BUCKET_NAME=$(cat tf_output.json | grep -A5 '"html_bucket_name":' | grep '"value":' | cut -d'"' -f4)
-          fi
-          
+          # Método simples e direto
+          terraform output -raw html_bucket_name > bucket_name.txt
+          BUCKET_NAME=$(cat bucket_name.txt | tr -d '\n' | tr -d '\r')
           echo "bucket_name=$BUCKET_NAME" >> $GITHUB_OUTPUT
-          echo "✅ Nome extraído: $BUCKET_NAME"
-
-      - name: Verificar nome do bucket
-        run: |
-          if [ -z "${{ steps.extract-bucket.outputs.bucket_name }}" ]; then
-            echo "❌ ERRO: Não foi possível extrair o nome do bucket"
-            echo "Conteúdo do output:"
-            cat ${{ env.WORKING_DIR }}/tf_output.json
-            exit 1
-          fi
-          echo "✅ Nome do bucket válido: ${{ steps.extract-bucket.outputs.bucket_name }}"
+          echo "✅ Nome do bucket: $BUCKET_NAME"
 
       - name: Copiar arquivo para o bucket
         run: |
           gsutil cp "$GITHUB_WORKSPACE/calculadora/index.html" "gs://${{ steps.extract-bucket.outputs.bucket_name }}/index.html"
           echo "✅ Arquivo copiado com sucesso"
 
-      - name: Configurar permissões públicas
-        run: |
-          gsutil acl ch -u AllUsers:R "gs://${{ steps.extract-bucket.outputs.bucket_name }}/index.html"
-          echo "✅ Permissões configuradas"
-
       - name: Finalizar deploy
         run: |
           echo "🚀 Deploy concluído!"
-          echo "📋 URL: https://storage.googleapis.com/${{ steps.extract-bucket.outputs.bucket_name }}/index.html"
+          echo "📋 URL pública: https://storage.googleapis.com/${{ steps.extract-bucket.outputs.bucket_name }}/index.html"
+          echo "🌐 Website: https://${{ steps.extract-bucket.outputs.bucket_name }}.storage.googleapis.com"
