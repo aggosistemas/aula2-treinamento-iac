@@ -1,102 +1,72 @@
-name: Deploy HTML para Bucket GCP
+name: Deploy HTML Bucket
 
 on:
   workflow_dispatch:
     inputs:
       branch:
-        description: 'Branch para executar a pipeline'
+        description: "Selecione a branch para executar"
         required: true
-        default: 'main'
+        default: "main"
 
 jobs:
-  terraform:
-    name: Terraform Provisionamento
+  deploy-html:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: infra
 
     steps:
-      - name: Checkout do repositório
-        uses: actions/checkout@v4
+      - name: Checkout código
+        uses: actions/checkout@v3
         with:
           ref: ${{ github.event.inputs.branch }}
 
-      - name: Instalar Google Cloud SDK
-        uses: google-github-actions/setup-gcloud@v1
-        with:
-          project_id: ${{ secrets.GCP_PROJECT_ID }}
-          service_account_key: ${{ secrets.GCP_SA_KEY }}
-          export_default_credentials: true
-
       - name: Instalar Terraform
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: 1.7.5
+
+      - name: Criar arquivo de credenciais da GCP
+        run: echo "${{ secrets.GCP_SA_KEY }}" > /tmp/key.json
+
+      - name: Autenticar no GCP via ADC
+        run: |
+          gcloud auth activate-service-account --key-file=/tmp/key.json
+          gcloud config set project ${{ secrets.GCP_PROJECT_ID }}
 
       - name: Inicializar Terraform
         run: terraform init
-        working-directory: infra
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: /tmp/key.json
 
       - name: Validar Terraform
         run: terraform validate
-        working-directory: infra
-
-      - name: Aplicar Terraform (Criar Bucket)
-        run: terraform apply -auto-approve
-        working-directory: infra
-
-  upload:
-    name: Upload HTML para Bucket
-    runs-on: ubuntu-latest
-    needs: terraform
-
-    steps:
-      - name: Checkout do repositório
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.inputs.branch }}
-
-      - name: Instalar Google Cloud SDK
-        uses: google-github-actions/setup-gcloud@v1
-        with:
-          project_id: ${{ secrets.GCP_PROJECT_ID }}
-          service_account_key: ${{ secrets.GCP_SA_KEY }}
-          export_default_credentials: true
-
-      - name: Copiar index.html para bucket GCP
-        run: |
-          gsutil cp calculadora/index.html gs://bucket-html-publico/index.html
-          gsutil acl ch -u AllUsers:R gs://bucket-html-publico/index.html
-
-  discord_notification:
-    name: Notificar no Discord
-    runs-on: ubuntu-latest
-    needs: [upload]
-
-    steps:
-      - name: Enviar notificação
         env:
-          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_URL }}
-          STATUS: ${{ needs.upload.result }}
-        run: |
-          if [ "$STATUS" = "success" ]; then
-            COLOR=3066993
-            MESSAGE="✅ Deploy de HTML realizado com sucesso!"
-          else
-            COLOR=15158332
-            MESSAGE="❌ Falha na pipeline de deploy do HTML!"
-          fi
+          GOOGLE_APPLICATION_CREDENTIALS: /tmp/key.json
 
-          curl -H "Content-Type: application/json" \
-            -X POST $DISCORD_WEBHOOK \
-            -d "{
-              \"username\": \"GitHub Actions\",
-              \"embeds\": [{
-                \"title\": \"Status da Pipeline - Deploy HTML\",
-                \"description\": \"$MESSAGE\",
-                \"color\": $COLOR,
-                \"fields\": [
-                  { \"name\": \"Repositório\", \"value\": \"${{ github.repository }}\", \"inline\": true },
-                  { \"name\": \"Branch\", \"value\": \"${{ github.ref_name }}\", \"inline\": true },
-                  { \"name\": \"Autor\", \"value\": \"${{ github.actor }}\", \"inline\": true }
-                ],
-                \"footer\": { \"text\": \"GitHub Actions\" },
-                \"timestamp\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"
-              }]
-            }"
+      - name: Aplicar Terraform (criação do bucket)
+        run: terraform apply -auto-approve
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: /tmp/key.json
+
+      - name: Copiar index.html para o bucket
+        run: |
+          BUCKET_NAME=$(terraform output -raw html_bucket_name)
+          gsutil cp ../calculadora/index.html gs://$BUCKET_NAME/index.html
+          gsutil acl ch -u AllUsers:R gs://$BUCKET_NAME/index.html
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: /tmp/key.json
+
+      - name: Notificar sucesso no Discord
+        if: success()
+        run: |
+          curl -X POST -H "Content-Type: application/json" \
+          -d '{"content": "✅ Deploy do bucket HTML realizado com sucesso!"}' \
+          https://discord.com/api/webhooks/1414793316083433663/DqRtpwytv1u3ROdhKxhwGUMZYA0leFFCKcZd7PcNc4J45HtqkmpqESBCGVcDl08C0nFu
+
+      - name: Notificar falha no Discord
+        if: failure()
+        run: |
+          curl -X POST -H "Content-Type: application/json" \
+          -d '{"content": "❌ Falha no deploy do bucket HTML. Verifique a pipeline no GitHub Actions."}' \
+          https://discord.com/api/webhooks/1414793316083433663/DqRtpwytv1u3ROdhKxhwGUMZYA0leFFCKcZd7PcNc4J45HtqkmpqESBCGVcDl08C0nFu
