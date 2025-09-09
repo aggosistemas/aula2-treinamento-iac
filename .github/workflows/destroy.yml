@@ -1,0 +1,53 @@
+name: Deploy Destroy
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: "Selecione a branch para executar"
+        required: true
+        default: "main"
+
+env:
+  TERRAFORM_VERSION: 1.7.5
+  WORKING_DIR: infra
+
+jobs:
+  destroy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v3
+        with:
+          ref: ${{ github.event.inputs.branch }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+
+      - name: Configurar autenticação GCP
+        uses: google-github-actions/auth@v1
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+
+      - name: Setup Google Cloud SDK
+        uses: google-github-actions/setup-gcloud@v1
+        with:
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+
+      - name: Inicializar Terraform
+        run: terraform init
+        working-directory: ${{ env.WORKING_DIR }}
+
+      - name: Validar configuração Terraform
+        run: terraform validate
+        working-directory: ${{ env.WORKING_DIR }}
+
+      - name: Destruir infraestrutura
+        run: terraform destroy -auto-approve
+        working-directory: ${{ env.WORKING_DIR }}
+
+      - name: Confirmar destruição
+        run: echo "✅ Infraestrutura destruída com sucesso"
