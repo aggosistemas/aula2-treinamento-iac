@@ -47,11 +47,12 @@ jobs:
         run: terraform apply -auto-approve -var="project_id=${{ secrets.GCP_PROJECT_ID }}"
         working-directory: ${{ env.WORKING_DIR }}
 
-      - name: Obter nome do bucket
+      - name: Obter nome do bucket (limpo)
         id: get-bucket
         run: |
-          BUCKET_NAME=$(terraform output -raw html_bucket_name)
-          echo "BUCKET_NAME=$BUCKET_NAME" >> $GITHUB_OUTPUT
+          # Executar com redirecionamento de stderr para evitar mensagens de debug
+          BUCKET_NAME=$(terraform output -raw html_bucket_name 2>/dev/null)
+          echo "bucket_name=$BUCKET_NAME" >> $GITHUB_OUTPUT
           echo "✅ Bucket criado: $BUCKET_NAME"
         working-directory: ${{ env.WORKING_DIR }}
 
@@ -62,19 +63,11 @@ jobs:
           ls -la
           echo "📁 Conteúdo da pasta calculadora:"
           ls -la ../calculadora/
-          echo "📄 Verificando arquivo index.html:"
-          if [ -f "../calculadora/index.html" ]; then
-            echo "✅ Arquivo index.html encontrado"
-          else
-            echo "❌ Arquivo index.html NÃO encontrado"
-            exit 1
-          fi
         working-directory: ${{ env.WORKING_DIR }}
 
       - name: Copiar arquivo para o bucket
         run: |
-          cd ..
-          echo "📤 Copiando arquivo do diretório: $(pwd)"
-          gsutil cp calculadora/index.html gs://${{ steps.get-bucket.outputs.BUCKET_NAME }}/index.html
-          gsutil acl ch -u AllUsers:R gs://${{ steps.get-bucket.outputs.BUCKET_NAME }}/index.html
-          echo "✅ Arquivo copiado para: gs://${{ steps.get-bucket.outputs.BUCKET_NAME }}/index.html"
+          # Usar caminho absoluto para evitar problemas de diretório
+          gsutil cp $GITHUB_WORKSPACE/calculadora/index.html gs://${{ steps.get-bucket.outputs.bucket_name }}/index.html
+          gsutil acl ch -u AllUsers:R gs://${{ steps.get-bucket.outputs.bucket_name }}/index.html
+          echo "✅ Arquivo copiado para: gs://${{ steps.get-bucket.outputs.bucket_name }}/index.html"
