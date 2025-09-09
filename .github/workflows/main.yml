@@ -1,0 +1,102 @@
+name: Deploy HTML para Bucket GCP
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Branch para executar a pipeline'
+        required: true
+        default: 'main'
+
+jobs:
+  terraform:
+    name: Terraform Provisionamento
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout do repositório
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.branch }}
+
+      - name: Instalar Google Cloud SDK
+        uses: google-github-actions/setup-gcloud@v1
+        with:
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+          service_account_key: ${{ secrets.GCP_SA_KEY }}
+          export_default_credentials: true
+
+      - name: Instalar Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Inicializar Terraform
+        run: terraform init
+        working-directory: infra
+
+      - name: Validar Terraform
+        run: terraform validate
+        working-directory: infra
+
+      - name: Aplicar Terraform (Criar Bucket)
+        run: terraform apply -auto-approve
+        working-directory: infra
+
+  upload:
+    name: Upload HTML para Bucket
+    runs-on: ubuntu-latest
+    needs: terraform
+
+    steps:
+      - name: Checkout do repositório
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.branch }}
+
+      - name: Instalar Google Cloud SDK
+        uses: google-github-actions/setup-gcloud@v1
+        with:
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+          service_account_key: ${{ secrets.GCP_SA_KEY }}
+          export_default_credentials: true
+
+      - name: Copiar index.html para bucket GCP
+        run: |
+          gsutil cp calculadora/index.html gs://bucket-html-publico/index.html
+          gsutil acl ch -u AllUsers:R gs://bucket-html-publico/index.html
+
+  discord_notification:
+    name: Notificar no Discord
+    runs-on: ubuntu-latest
+    needs: [upload]
+
+    steps:
+      - name: Enviar notificação
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          STATUS: ${{ needs.upload.result }}
+        run: |
+          if [ "$STATUS" = "success" ]; then
+            COLOR=3066993
+            MESSAGE="✅ Deploy de HTML realizado com sucesso!"
+          else
+            COLOR=15158332
+            MESSAGE="❌ Falha na pipeline de deploy do HTML!"
+          fi
+
+          curl -H "Content-Type: application/json" \
+            -X POST $DISCORD_WEBHOOK \
+            -d "{
+              \"username\": \"GitHub Actions\",
+              \"embeds\": [{
+                \"title\": \"Status da Pipeline - Deploy HTML\",
+                \"description\": \"$MESSAGE\",
+                \"color\": $COLOR,
+                \"fields\": [
+                  { \"name\": \"Repositório\", \"value\": \"${{ github.repository }}\", \"inline\": true },
+                  { \"name\": \"Branch\", \"value\": \"${{ github.ref_name }}\", \"inline\": true },
+                  { \"name\": \"Autor\", \"value\": \"${{ github.actor }}\", \"inline\": true }
+                ],
+                \"footer\": { \"text\": \"GitHub Actions\" },
+                \"timestamp\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"
+              }]
+            }"
