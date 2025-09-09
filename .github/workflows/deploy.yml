@@ -1,65 +1,62 @@
-name: "Provisionar bucket e copiar HTML"
+name: Deploy Apply
 
 on:
   workflow_dispatch:
+    inputs:
+      branch:
+        description: "Selecione a branch para executar"
+        required: true
+        default: "main"
 
 env:
   TERRAFORM_VERSION: 1.7.5
   WORKING_DIR: infra
 
 jobs:
-  apply:
+  deploy:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout do repositório
-        uses: actions/checkout@v4
-
-      - name: Autenticação com GCP
-        uses: google-github-actions/auth@v2
+      - name: Checkout código
+        uses: actions/checkout@v3
         with:
-          credentials_json: '${{ secrets.GCP_CREDENTIALS }}'
-          create_credentials_file: true
-          export_environment_variables: true
-          universe: googleapis.com
-          cleanup_credentials: true
-          access_token_lifetime: 3600s
-          access_token_scopes: https://www.googleapis.com/auth/cloud-platform
-          id_token_include_email: false
+          ref: ${{ github.event.inputs.branch }}
 
-      - name: Configurar gcloud CLI
-        uses: google-github-actions/setup-gcloud@v2
-
-      - name: Instalar Terraform
-        uses: hashicorp/setup-terraform@v3
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
         with:
           terraform_version: ${{ env.TERRAFORM_VERSION }}
+
+      - name: Configurar autenticação GCP
+        uses: google-github-actions/auth@v1
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+
+      - name: Setup Google Cloud SDK
+        uses: google-github-actions/setup-gcloud@v1
 
       - name: Inicializar Terraform
         run: terraform init
         working-directory: ${{ env.WORKING_DIR }}
 
+      - name: Validar configuração Terraform
+        run: terraform validate
+        working-directory: ${{ env.WORKING_DIR }}
+
       - name: Aplicar infraestrutura
-        run: terraform apply -auto-approve
+        run: terraform apply -auto-approve -var="gcp_project=${{ secrets.GCP_PROJECT_ID }}"
         working-directory: ${{ env.WORKING_DIR }}
 
       - name: Obter nome do bucket
-        id: get-bucket-name
         run: |
           BUCKET_NAME=$(terraform output -raw html_bucket_name)
-          echo "bucket_name=$BUCKET_NAME" >> "$GITHUB_OUTPUT"
+          echo "✅ Bucket criado: $BUCKET_NAME"
         working-directory: ${{ env.WORKING_DIR }}
 
-      - name: Validar existência do index.html
+      - name: Copiar arquivo para o bucket
         run: |
-          if [ ! -f "calculadora/index.html" ]; then
-            echo "❌ Arquivo index.html não encontrado!"
-            exit 1
-          fi
-          echo "✅ Arquivo index.html encontrado"
-
-      - name: Copiar index.html para o bucket
-        run: |
-          BUCKET_NAME=${{ steps.get-bucket-name.outputs.bucket_name }}
-          gsutil cp calculadora/index.html gs://$BUCKET_NAME/index.html
+          BUCKET_NAME=$(terraform output -raw html_bucket_name)
+          gsutil cp ../calculadora/index.html gs://$BUCKET_NAME/index.html
           gsutil acl ch -u AllUsers:R gs://$BUCKET_NAME/index.html
+          echo "✅ Arquivo copiado para: gs://$BUCKET_NAME/index.html"
+        working-directory: ${{ env.WORKING_DIR }}
