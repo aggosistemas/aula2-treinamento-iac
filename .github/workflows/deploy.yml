@@ -1,10 +1,10 @@
-name: Deploy HTML para GCP
+name: 🚀 Deploy HTML GCP Bucket
 
 on:
   workflow_dispatch:
     inputs:
       branch:
-        description: "Selecione a branch para executar"
+        description: "Branch para deploy"
         required: true
         default: "main"
 
@@ -13,46 +13,35 @@ env:
   WORKING_DIR: infra
 
 jobs:
-  checkout:
-    name: 🔄 Checkout do Código
-    runs-on: ubuntu-latest
-    outputs:
-      branch_name: ${{ steps.get_branch.outputs.branch }}
-    steps:
-      - name: Checkout código
-        uses: actions/checkout@v3
-        with:
-          ref: ${{ github.event.inputs.branch }}
-
-      - name: Obter nome da branch
-        id: get_branch
-        run: echo "branch=${{ github.event.inputs.branch }}" >> $GITHUB_OUTPUT
 
   auth:
     name: 🔐 Autenticação GCP
-    needs: checkout
     runs-on: ubuntu-latest
     steps:
-      - name: Autenticar com GCP
+      - name: Autenticar com a GCP
+        id: auth
         uses: google-github-actions/auth@v1
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
           project_id: ${{ secrets.GCP_PROJECT_ID }}
 
-      - name: Instalar Google Cloud SDK
-        uses: google-github-actions/setup-gcloud@v1
-
   terraform:
     name: ⚙️ Terraform Apply
-    needs: auth
     runs-on: ubuntu-latest
+    needs: auth
     steps:
       - name: Checkout código
         uses: actions/checkout@v3
         with:
           ref: ${{ github.event.inputs.branch }}
 
-      - name: Setup Terraform
+      - name: Autenticar com a GCP
+        uses: google-github-actions/auth@v1
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+
+      - name: Instalar Terraform
         uses: hashicorp/setup-terraform@v2
         with:
           terraform_version: ${{ env.TERRAFORM_VERSION }}
@@ -61,48 +50,36 @@ jobs:
         run: terraform init
         working-directory: ${{ env.WORKING_DIR }}
 
-      - name: Validar configuração
-        run: terraform validate
-        working-directory: ${{ env.WORKING_DIR }}
-
       - name: Aplicar infraestrutura
-        run: terraform apply -auto-approve -var="project_id=${{ secrets.GCP_PROJECT_ID }}"
+        run: terraform apply -auto-approve
         working-directory: ${{ env.WORKING_DIR }}
 
-      - name: Extrair nome do bucket
-        id: extract_bucket
-        run: |
-          cd ${{ env.WORKING_DIR }}
-          BUCKET_NAME=$(terraform output -raw html_bucket_name | tr -d '\r')
-          echo "bucket_name=$BUCKET_NAME" >> $GITHUB_ENV
-          echo "bucket_name=$BUCKET_NAME" >> $GITHUB_OUTPUT
-          echo "✅ Nome do bucket: $BUCKET_NAME"
-
-  upload:
-    name: ☁️ Upload index.html
-    needs: terraform
+  deploy:
+    name: 📁 Copiar HTML para o Bucket
     runs-on: ubuntu-latest
+    needs: terraform
     steps:
       - name: Checkout código
         uses: actions/checkout@v3
         with:
           ref: ${{ github.event.inputs.branch }}
 
-      - name: Instalar Google Cloud SDK
-        uses: google-github-actions/setup-gcloud@v1
+      - name: Autenticar com a GCP
+        uses: google-github-actions/auth@v1
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
 
-      - name: Copiar index.html para bucket
+      - name: Obter nome do bucket
+        id: get_bucket
         run: |
-          echo "📁 Copiando index.html para o bucket..."
-          gsutil cp "calculadora/index.html" "gs://${{ needs.terraform.outputs.bucket_name }}/index.html"
-          echo "✅ HTML copiado com sucesso"
+          cd $WORKING_DIR
+          BUCKET_NAME=$(terraform output -raw html_bucket_name | tr -d '\r')
+          echo "bucket_name=$BUCKET_NAME" >> $GITHUB_ENV
+          echo "bucket_name=$BUCKET_NAME" >> $GITHUB_OUTPUT
 
-  done:
-    name: ✅ Finalizar e Mostrar URL
-    needs: upload
-    runs-on: ubuntu-latest
-    steps:
-      - name: Mostrar URL pública
+      - name: Copiar arquivo index.html
         run: |
-          echo "🚀 Deploy concluído com sucesso!"
-          echo "🌐 URL: https://${{ env.bucket_name }}.storage.googleapis.com/index.html"
+          echo "📁 Copiando index.html para o bucket ${{ env.bucket_name }}..."
+          gsutil cp calculadora/index.html gs://${{ env.bucket_name }}/index.html
+          echo "✅ HTML copiado com sucesso!"
