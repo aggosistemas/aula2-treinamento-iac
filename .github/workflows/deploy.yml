@@ -26,11 +26,12 @@ jobs:
         with:
           terraform_version: ${{ env.TERRAFORM_VERSION }}
 
-      - name: Autenticar na GCP
-        uses: google-github-actions/auth@v1
+      - name: Configurar autenticação GCP
+        uses: google-github-actions/auth@v2
         with:
-          credentials_json: ${{ secrets.GCP_SA_KEY }}
+          create_credentials_file: true
           export_environment_variables: true
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
           project_id: ${{ secrets.GCP_PROJECT_ID }}
 
       - name: Setup Google Cloud SDK
@@ -52,20 +53,12 @@ jobs:
         id: extract-bucket
         run: |
           cd ${{ env.WORKING_DIR }}
-          BUCKET_NAME=$(terraform output -raw html_bucket_name | tr -d '\r')
-          echo "bucket_name=${BUCKET_NAME}" >> $GITHUB_ENV
-          echo "bucket_name=${BUCKET_NAME}" >> $GITHUB_OUTPUT
+          BUCKET_NAME=$(terraform output -raw html_bucket_name 2>/dev/null | tr -d '\r' | tr -d '\n')
+          echo "bucket_name=$BUCKET_NAME" >> $GITHUB_ENV
+          echo "bucket_name=$BUCKET_NAME" >> $GITHUB_OUTPUT
           echo "✅ Nome do bucket: $BUCKET_NAME"
 
-      - name: Verificar existência do arquivo index.html
-        run: |
-          if [ ! -f "$GITHUB_WORKSPACE/calculadora/index.html" ]; then
-            echo "❌ Arquivo index.html não encontrado!"
-            exit 1
-          fi
-          echo "✅ Arquivo index.html encontrado com sucesso"
-
-      - name: Copiar HTML para o bucket
+      - name: Copiar arquivo index.html para o bucket
         run: |
           echo "📁 Copiando index.html para o bucket..."
           gsutil cp "$GITHUB_WORKSPACE/calculadora/index.html" "gs://${{ env.bucket_name }}/index.html"
