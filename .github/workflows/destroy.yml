@@ -7,6 +7,9 @@ on:
         description: "Selecione a branch para executar"
         required: true
         default: "main"
+      gcp_project_id:
+        description: "ID do projeto GCP"
+        required: true
 
 env:
   TERRAFORM_VERSION: 1.7.5
@@ -29,7 +32,7 @@ jobs:
     needs: checkout
     steps:
       - name: Autenticar com GCP
-        uses: google-github-actions/auth@v1
+          project_id: ${{ github.event.inputs.gcp_project_id }}
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
           project_id: ${{ secrets.GCP_PROJECT_ID }}
@@ -58,8 +61,8 @@ jobs:
 
       - name: Validar Terraform
         run: terraform validate
+        run: terraform destroy -auto-approve -var="project_id=${{ github.event.inputs.gcp_project_id }}"
         working-directory: ${{ env.WORKING_DIR }}
-
       - name: Destruir infraestrutura
         run: terraform destroy -auto-approve -var="project_id=${{ secrets.GCP_PROJECT_ID }}"
         working-directory: ${{ env.WORKING_DIR }}
