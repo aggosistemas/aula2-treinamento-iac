@@ -3,10 +3,6 @@ name: Deploy Apply
 on:
   workflow_dispatch:
     inputs:
-      branch:
-        description: "Selecione a branch para executar"
-        required: true
-        default: "main"
       bucket_name:
         description: "Digite o nome do bucket"
         required: true
@@ -23,8 +19,6 @@ jobs:
     steps:
       - name: Checkout código
         uses: actions/checkout@v3
-        with:
-          ref: ${{ github.event.inputs.branch }}
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v2
