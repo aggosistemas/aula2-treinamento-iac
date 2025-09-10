@@ -1,4 +1,4 @@
-name: 🚀 Deploy HTML GCP Bucket
+name: 🚀 Deploy HTML com bucket fixo
 
 on:
   workflow_dispatch:
@@ -11,6 +11,7 @@ on:
 env:
   TERRAFORM_VERSION: 1.7.5
   WORKING_DIR: infra
+  BUCKET_NAME: bucket-html-tonho
 
 jobs:
 
@@ -70,16 +71,8 @@ jobs:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
           project_id: ${{ secrets.GCP_PROJECT_ID }}
 
-      - name: Obter nome do bucket
-        id: get_bucket
+      - name: Copiar arquivo index.html para bucket fixo
         run: |
-          cd $WORKING_DIR
-          BUCKET_NAME=$(terraform output -raw html_bucket_name | tr -d '\r')
-          echo "bucket_name=$BUCKET_NAME" >> $GITHUB_ENV
-          echo "bucket_name=$BUCKET_NAME" >> $GITHUB_OUTPUT
-
-      - name: Copiar arquivo index.html
-        run: |
-          echo "📁 Copiando index.html para o bucket ${{ env.bucket_name }}..."
-          gsutil cp calculadora/index.html gs://${{ env.bucket_name }}/index.html
+          echo "📁 Copiando index.html para o bucket ${BUCKET_NAME}..."
+          gsutil cp calculadora/index.html gs://${BUCKET_NAME}/index.html
           echo "✅ HTML copiado com sucesso!"
