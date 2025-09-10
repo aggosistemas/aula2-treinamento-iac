@@ -3,15 +3,14 @@ name: Destroy Infraestrutura
 on:
   workflow_dispatch:
     inputs:
-      branch:
-        description: "Selecione a branch para executar"
+      bucket_name:
+        description: "Digite o nome do bucket"
         required: true
-        default: "main"
+        default: "COLE AQUI O NOME DO SEU BUCKET"
 
 env:
   TERRAFORM_VERSION: 1.7.5
   WORKING_DIR: infra
-  BUCKET_NAME: bucket-html-tonho
 
 jobs:
   destroy:
@@ -20,8 +19,6 @@ jobs:
     steps:
       - name: Checkout código
         uses: actions/checkout@v3
-        with:
-          ref: ${{ github.event.inputs.branch }}
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v2
@@ -49,7 +46,7 @@ jobs:
         continue-on-error: true
         run: |
           echo "🧹 Limpando bucket antes da destruição..."
-          gsutil rm "gs://${{ env.BUCKET_NAME }}/index.html" || echo "Nenhum arquivo encontrado"
+          gsutil rm "gs://${{ github.event.inputs.bucket_name }}/index.html" || echo "Nenhum arquivo encontrado"
 
       - name: Destruir infraestrutura
         run: terraform destroy -auto-approve -var="project_id=${{ secrets.GCP_PROJECT_ID }}"
