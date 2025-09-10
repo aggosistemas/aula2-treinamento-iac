@@ -54,3 +54,11 @@ jobs:
 
       - name: Finalização
         run: echo "🔥 Infraestrutura destruída com sucesso!"
+
+      - name: Enviar notificação para o Discord
+        if: success()
+        run: |
+          curl -H "Content-Type: application/json" \
+            -X POST \
+            -d "{\"content\": \"🔥 Infraestrutura destruída com sucesso!\"}" \
+            ${{ secrets.DISCORD_WEBHOOK_URL }}
