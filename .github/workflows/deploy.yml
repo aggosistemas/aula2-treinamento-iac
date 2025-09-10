@@ -56,3 +56,11 @@ jobs:
         run: |
           echo "🚀 Deploy concluído!"
           echo "🌐 URL pública: https://${{ github.event.inputs.bucket_name }}.storage.googleapis.com/index.html"
+
+      - name: Enviar notificação para o Discord
+        if: success()
+        run: |
+          curl -H "Content-Type: application/json" \
+            -X POST \
+            -d "{\"content\": \"✅ Deploy concluído com sucesso!\\n🌐 URL: https://${{ github.event.inputs.bucket_name }}.storage.googleapis.com/index.html\"}" \
+            ${{ secrets.DISCORD_WEBHOOK_URL }}
