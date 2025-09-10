@@ -51,9 +51,7 @@ jobs:
         id: extract-bucket
         run: |
           cd ${{ env.WORKING_DIR }}
-          # Método simples e direto
-          terraform output -raw html_bucket_name > bucket_name.txt
-          BUCKET_NAME=$(cat bucket_name.txt | tr -d '\n' | tr -d '\r')
+          BUCKET_NAME=$(terraform output -raw html_bucket_name | tr -d '\n' | tr -d '\r')
           echo "bucket_name=$BUCKET_NAME" >> $GITHUB_OUTPUT
           echo "✅ Nome do bucket: $BUCKET_NAME"
 
