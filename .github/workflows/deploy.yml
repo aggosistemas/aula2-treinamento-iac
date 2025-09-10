@@ -15,7 +15,6 @@ env:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout código
         uses: actions/checkout@v3
@@ -28,11 +27,11 @@ jobs:
           terraform_version: ${{ env.TERRAFORM_VERSION }}
 
       - name: Autenticar na GCP
-        uses: google-github-actions/auth@v2
+        uses: google-github-actions/auth@v1
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
           export_environment_variables: true
-          create_credentials_file: true
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
 
       - name: Setup Google Cloud SDK
         uses: google-github-actions/setup-gcloud@v1
@@ -53,23 +52,27 @@ jobs:
         id: extract-bucket
         run: |
           cd ${{ env.WORKING_DIR }}
-          echo "🔍 Extraindo nome do bucket..."
-          BUCKET_NAME=$(terraform output -raw html_bucket_name | tr -d '\n' | tr -d '\r')
-          echo "bucket_name=$BUCKET_NAME" >> "$GITHUB_OUTPUT"
+          BUCKET_NAME=$(terraform output -raw html_bucket_name | tr -d '\r')
+          echo "bucket_name=${BUCKET_NAME}" >> $GITHUB_ENV
+          echo "bucket_name=${BUCKET_NAME}" >> $GITHUB_OUTPUT
           echo "✅ Nome do bucket: $BUCKET_NAME"
+
+      - name: Verificar existência do arquivo index.html
+        run: |
+          if [ ! -f "$GITHUB_WORKSPACE/calculadora/index.html" ]; then
+            echo "❌ Arquivo index.html não encontrado!"
+            exit 1
+          fi
+          echo "✅ Arquivo index.html encontrado com sucesso"
 
       - name: Copiar HTML para o bucket
         run: |
           echo "📁 Copiando index.html para o bucket..."
-          gsutil cp "$GITHUB_WORKSPACE/calculadora/index.html" "gs://${{ steps.extract-bucket.outputs.bucket_name }}/index.html"
+          gsutil cp "$GITHUB_WORKSPACE/calculadora/index.html" "gs://${{ env.bucket_name }}/index.html"
           echo "✅ HTML copiado com sucesso"
-
-      - name: Tornar HTML público (opcional)
-        run: |
-          gsutil acl ch -u AllUsers:R "gs://${{ steps.extract-bucket.outputs.bucket_name }}/index.html"
-          echo "🌍 index.html agora é público"
 
       - name: Finalizar deploy
         run: |
           echo "🚀 Deploy concluído!"
-          echo "🌐 Website: https://${{ steps.extract-bucket.outputs.bucket_name }}.storage.googleapis.com"
+          echo "📋 URL pública: https://storage.googleapis.com/${{ env.bucket_name }}/index.html"
+          echo "🌐 Website: https://${{ env.bucket_name }}.storage.googleapis.com"
