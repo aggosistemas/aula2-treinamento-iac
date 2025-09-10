@@ -7,11 +7,14 @@ on:
         description: "Selecione a branch para executar"
         required: true
         default: "main"
+      bucket_name:
+        description: "Digite o nome do bucket"
+        required: true
+        default: "COLE AQUI O NOME DO SEU BUCKET"
 
 env:
   TERRAFORM_VERSION: 1.7.5
   WORKING_DIR: infra
-  BUCKET_NAME: bucket-html-tonho # <- coloque o mesmo nome definido no Terraform
 
 jobs:
   deploy:
@@ -52,10 +55,10 @@ jobs:
       - name: Copiar index.html para o bucket
         run: |
           echo "📁 Copiando index.html para o bucket..."
-          gsutil cp "$GITHUB_WORKSPACE/calculadora/index.html" "gs://${{ env.BUCKET_NAME }}/index.html"
+          gsutil cp "$GITHUB_WORKSPACE/calculadora/index.html" "gs://${{ github.event.inputs.bucket_name }}/index.html"
           echo "✅ HTML copiado com sucesso"
 
       - name: Exibir URL de acesso
         run: |
           echo "🚀 Deploy concluído!"
-          echo "🌐 URL pública: https://${{ env.BUCKET_NAME }}.storage.googleapis.com/index.html"
+          echo "🌐 URL pública: https://${{ github.event.inputs.bucket_name }}.storage.googleapis.com/index.html"
