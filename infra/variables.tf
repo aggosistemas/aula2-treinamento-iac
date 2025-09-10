@@ -13,5 +13,5 @@ variable "region" {
 variable "html_bucket_name" {
   type        = string
   description = "Nome do bucket que armazenará os arquivos HTML"
-  default = "bucket-html-tonho"
+  default = "bucket-html-toninho"
 }
