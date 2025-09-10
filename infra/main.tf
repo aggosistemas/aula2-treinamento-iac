@@ -3,7 +3,7 @@ provider "google" {
   region  = var.region
 }
 
-resource "google_storage_bucket" "html_bucket2" {
+resource "google_storage_bucket" "html_bucket" {
   name          = var.html_bucket_name
   location      = var.region
   project       = var.project_id
@@ -18,7 +18,7 @@ resource "google_storage_bucket" "html_bucket2" {
 }
 
 resource "google_storage_bucket_iam_member" "public_read_html" {
-  bucket = google_storage_bucket.html_bucket2.name
+  bucket = google_storage_bucket.html_bucket.name
   role   = "roles/storage.objectViewer"
   member = "allUsers"
 }
