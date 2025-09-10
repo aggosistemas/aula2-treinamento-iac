@@ -1,4 +1,4 @@
-name: Destroy Infraestrutura
+name: Destroy Infraestrutura Didático
 
 on:
   workflow_dispatch:
@@ -14,9 +14,33 @@ env:
   BUCKET_NAME: bucket-html-tonho
 
 jobs:
-  destroy:
+  checkout:
+    name: 🔄 Checkout do Código
     runs-on: ubuntu-latest
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v3
+        with:
+          ref: ${{ github.event.inputs.branch }}
 
+  auth:
+    name: 🔐 Autenticação com GCP
+    runs-on: ubuntu-latest
+    needs: checkout
+    steps:
+      - name: Autenticar com GCP
+        uses: google-github-actions/auth@v1
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+
+      - name: Instalar Google Cloud SDK
+        uses: google-github-actions/setup-gcloud@v1
+
+  terraform_destroy:
+    name: 💣 Terraform Destroy
+    runs-on: ubuntu-latest
+    needs: auth
     steps:
       - name: Checkout código
         uses: actions/checkout@v3
@@ -28,15 +52,6 @@ jobs:
         with:
           terraform_version: ${{ env.TERRAFORM_VERSION }}
 
-      - name: Autenticar com GCP
-        uses: google-github-actions/auth@v1
-        with:
-          credentials_json: ${{ secrets.GCP_SA_KEY }}
-          project_id: ${{ secrets.GCP_PROJECT_ID }}
-
-      - name: Instalar Google Cloud SDK
-        uses: google-github-actions/setup-gcloud@v1
-
       - name: Inicializar Terraform
         run: terraform init
         working-directory: ${{ env.WORKING_DIR }}
@@ -45,15 +60,16 @@ jobs:
         run: terraform validate
         working-directory: ${{ env.WORKING_DIR }}
 
-      - name: Excluir index.html do bucket (se existir)
-        continue-on-error: true
-        run: |
-          echo "🧹 Limpando bucket antes da destruição..."
-          gsutil rm "gs://${{ env.BUCKET_NAME }}/index.html" || echo "Nenhum arquivo encontrado"
-
       - name: Destruir infraestrutura
         run: terraform destroy -auto-approve -var="project_id=${{ secrets.GCP_PROJECT_ID }}"
         working-directory: ${{ env.WORKING_DIR }}
 
-      - name: Finalização
-        run: echo "🔥 Infraestrutura destruída com sucesso!"
+  finalizar:
+    name: ✅ Finalizar e exibir mensagem
+    runs-on: ubuntu-latest
+    needs: terraform_destroy
+    steps:
+      - name: Confirmação de destruição
+        run: |
+          echo "🧹 Infraestrutura destruída com sucesso!"
+          echo "🧾 Bucket destruído: ${{ env.BUCKET_NAME }}"
