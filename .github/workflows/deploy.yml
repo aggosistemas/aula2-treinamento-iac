@@ -11,6 +11,7 @@ on:
 env:
   TERRAFORM_VERSION: 1.7.5
   WORKING_DIR: infra
+  PROJECT_ID: curso-iac-devops
 
 jobs:
   deploy:
@@ -25,14 +26,29 @@ jobs:
         with:
           terraform_version: ${{ env.TERRAFORM_VERSION }}
 
-      - name: Autenticar com GCP
+      # 1. Autentica usando uma SA que tem acesso ao Secret Manager
+      - name: Autenticar com GCP (para acessar Secret Manager)
         uses: google-github-actions/auth@v1
         with:
-          credentials_json: ${{ secrets.GCP_SA_KEY }}
-          project_id: ${{ secrets.GCP_PROJECT_ID }}
+          credentials_json: ${{ secrets.GCP_SA_KEY_ALUNO_02 }}
+          project_id: ${{ env.PROJECT_ID }}
 
       - name: Instalar Google Cloud SDK
         uses: google-github-actions/setup-gcloud@v1
+
+      # 2. Recupera o JSON real da SA do Secret Manager
+      - name: Recuperar Service Account do Secret Manager
+        run: |
+          gcloud secrets versions access latest \
+            --secret=poc-service-account \
+            --project=${{ env.PROJECT_ID }} > gcp-sa.json
+
+      # 3. Autentica com a SA recuperada
+      - name: Ativar Service Account
+        run: |
+          gcloud auth activate-service-account \
+            --key-file=gcp-sa.json \
+            --project=${{ env.PROJECT_ID }}
 
       - name: Inicializar Terraform
         run: terraform init
@@ -43,7 +59,7 @@ jobs:
         working-directory: ${{ env.WORKING_DIR }}
 
       - name: Aplicar infraestrutura
-        run: terraform apply -auto-approve -var="project_id=${{ secrets.GCP_PROJECT_ID }}"
+        run: terraform apply -auto-approve -var="project_id=${{ env.PROJECT_ID }}"
         working-directory: ${{ env.WORKING_DIR }}
 
       - name: Copiar index.html para o bucket
